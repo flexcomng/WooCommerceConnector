@@ -81,7 +81,7 @@ def post_request(path, data):
                 verify_ssl=settings['verify_ssl'],
                 wp_api=True,
                 version="wc/v3",
-                query_string_auth=True,
+                # query_string_auth=True,
                 timeout=1000
         )
         
@@ -89,7 +89,7 @@ def post_request(path, data):
         
         #r.raise_for_status()
         # manually raise for status to get more info from error (message details)
-        if r.status_code != requests.codes.ok:
+        if r.status_code not in (requests.codes.ok, requests.codes.created):
             make_woocommerce_log(title="WooCommerce post error {0}".format(r.status_code), 
                 status="Error", 
                 method="post_request", 
