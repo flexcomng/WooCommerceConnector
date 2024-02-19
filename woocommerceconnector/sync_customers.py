@@ -63,15 +63,21 @@ def create_customer(woocommerce_customer, woocommerce_customer_list):
         frappe.db.commit()
         make_woocommerce_log(title="create customer", status="Success", method="create_customer",
             message= "create customer",request_data=woocommerce_customer, exception=False)
-            
+    
     except Exception as e:
-        if e.args[0] and e.args[0].startswith("402"):
-            raise e
-        else:
-            make_woocommerce_log(title=e, status="Error", method="create_customer", message=frappe.get_traceback(),
-                request_data=woocommerce_customer, exception=True)
+        frappe.db.rollback()
+        frappe.db.commit()
+        make_woocommerce_log(title=str(e), status="Error", method="create_customer", message=frappe.get_traceback(), request_data=woocommerce_customer, exception=True)
+            
+    # except Exception as e:
+    #     if e.args[0] and e.args[0].startswith("402"):
+    #         raise e
+    #     else:
+    #         make_woocommerce_log(title=e, status="Error", method="create_customer", message=frappe.get_traceback(),
+                # request_data=woocommerce_customer, exception=True)
         
 def create_customer_address(customer, woocommerce_customer):
+
     billing_address = woocommerce_customer.get("billing")
     shipping_address = woocommerce_customer.get("shipping")
     
@@ -128,7 +134,7 @@ def create_customer_address(customer, woocommerce_customer):
             }).insert()
             
         except Exception as e:
-            make_woocommerce_log(title=e, status="Error", method="create_customer_address", message=frappe.get_traceback(),
+            make_woocommerce_log(title=str(e), status="Error", method="create_customer_address", message=frappe.get_traceback(),
                 request_data=woocommerce_customer, exception=True)
 
 # TODO: email and phone into child table
@@ -157,7 +163,7 @@ def create_customer_contact(customer, woocommerce_customer):
                 request_data=woocommerce_customer, exception=True)
 
 def get_country_name(code):
-    coutry_name = ''
+    coutry_name = 'Nigeria'
     coutry_names = """SELECT `country_name` FROM `tabCountry` WHERE `code` = '{0}'""".format(code.lower())
     for _coutry_name in frappe.db.sql(coutry_names, as_dict=1):
         coutry_name = _coutry_name.country_name

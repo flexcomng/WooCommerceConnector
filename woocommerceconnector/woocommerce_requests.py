@@ -9,6 +9,7 @@ from .utils import make_woocommerce_log
 import requests
 from frappe.utils import cint
 
+
 _per_page=100
 
 #def check_api_call_limit(response):
@@ -48,8 +49,10 @@ def get_request_request(path, settings=None):
                 verify_ssl=verify_ssl,
                 wp_api=True,
                 version="wc/v3",
+                query_string_auth=True,
                 timeout=1000
         )
+
         r = wcapi.get(path)
         
         #r.raise_for_status()
@@ -63,6 +66,8 @@ def get_request_request(path, settings=None):
                 exception=True)
         return r
     
+
+
 def get_request(path, settings=None):
     return get_request_request(path, settings).json()
         
@@ -76,6 +81,7 @@ def post_request(path, data):
                 verify_ssl=settings['verify_ssl'],
                 wp_api=True,
                 version="wc/v3",
+                query_string_auth=True,
                 timeout=1000
         )
         
@@ -102,6 +108,7 @@ def put_request(path, data):
                 verify_ssl=settings['verify_ssl'],
                 wp_api=True,
                 version="wc/v3",
+                query_string_auth=True,
                 timeout=5000
         )
         #frappe.log_error("{0} data: {1}".format(path, data))
@@ -129,6 +136,7 @@ def delete_request(path):
                 verify_ssl=settings['verify_ssl'],
                 wp_api=True,
                 version="wc/v3",
+                query_string_auth=True,
                 timeout=1000
         )
         r = wcapi.post(path)

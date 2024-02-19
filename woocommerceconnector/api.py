@@ -114,3 +114,96 @@ def sync_woocommerce_ids():
     "Enqueue longjob for syncing woocommerce"
     enqueue("woocommerceconnector.sync_products.add_w_id_to_erp", queue='long', timeout=1500)
     frappe.msgprint(_("Queued for syncing. It may take a few minutes to an hour if this is your first sync."))
+
+
+from frappe.auth import LoginManager
+
+
+
+@frappe.whitelist()
+def generate_response(_type, status=None, message=None, data=None, error=None):
+    if _type == "S":
+        if status:
+            frappe.response["status_code"] = int(status)
+        else:
+            frappe.response["status_code"] = 200
+        frappe.response["msg"] = message
+        frappe.response["data"] = data
+    else:
+        frappe.log_error(frappe.get_traceback())
+        if status:
+            frappe.response["status_code"] = status
+        else:
+            frappe.response["status_code"] = 500
+        if message:
+            frappe.response["msg"] = message
+        elif error:
+            frappe.response["msg"] = str(error)
+        else:
+            frappe.response["msg"] = "Something Went Wrong"
+        if error:
+            frappe.response["error"] = error
+        frappe.response["data"] = None
+
+
+def to_base64(value):
+    data_bytes = value.encode("ascii")
+    data = base64.b64encode(data_bytes)
+    return str(data)[2:-1]
+
+
+@frappe.whitelist(allow_guest=True)
+def login(usr=None, pwd=None):
+	if not usr:
+		return generate_response("F", error="'usr' parameter is required")
+	if not pwd:
+		return generate_response("F", error="'pwd' parameter is required")
+	try:
+		login_manager = LoginManager()
+		login_manager.authenticate(usr, pwd)
+		login_manager.post_login()
+		user = frappe.get_doc("User",frappe.session.user)
+		if frappe.response["message"] == "No App" or frappe.response["message"] == "Logged In":
+			frappe.response["sid"] = frappe.session.sid
+			frappe.response["user"] = frappe.session.user
+			frappe.response["user_data"] = user.as_dict()
+			frappe.response["token"] = generate_keys(frappe.session.user)
+			frappe.response["token64"] = generate_base64(login_manager.user)
+			frappe.response["status_code"] = 200
+
+	except Exception as e:
+		if "Invalid login credentials" in str(e):
+			return "Invalid credentials. Please review your username and/or password"
+
+def generate_keys(user):
+    user_details = frappe.get_doc('User', user)
+    api_secret = frappe.generate_hash(length=15)
+
+    if not user_details.api_key:
+        api_key = frappe.generate_hash(length=15)
+        user_details.api_key = api_key
+
+    user_details.api_secret = api_secret
+    user_details.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return user_details.api_key+":"+api_secret
+
+def generate_base64(user):
+    """
+    generate api key and api secret
+    :param user: str
+    """
+    user_details = frappe.get_doc("User", user)
+    # if api key is not set generate api key
+    if not user_details.api_key:
+        api_key = frappe.generate_hash(length=15)
+        user_details.api_key = api_key
+    if not user_details.api_secret:
+        api_secret = frappe.generate_hash(length=15)
+        user_details.api_secret = api_secret
+    user_details.save()
+    api_kyes_base64 = to_base64(user_details.api_key + ":" + user_details.api_key)
+    # token = "'Authorization': 'Basic {0}'".format(api_kyes_base64)
+    token = "{0}".format(api_kyes_base64)
+    return token
