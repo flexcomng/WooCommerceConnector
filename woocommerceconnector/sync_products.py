@@ -443,7 +443,7 @@ def add_to_price_list(item, name):
 def get_item_image(woocommerce_item):
     if woocommerce_item.get("images"):
         for image in woocommerce_item.get("images"):
-            if image.get("position") == 0: # the featured image
+            if image.get("position") == 0: 
                 return image
             return None
     else:
@@ -480,6 +480,7 @@ def sync_erpnext_items(price_list, warehouse, woocommerce_item_list):
             make_woocommerce_log(title="{0}".format(e), status="Error", method="sync_woocommerce_items", message=frappe.get_traceback(),
                 request_data=item, exception=True)
 
+
 def get_erpnext_items(price_list):
     erpnext_items = []
     woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
@@ -495,48 +496,56 @@ def get_erpnext_items(price_list):
         where sync_with_woocommerce=1 and (variant_of is null or variant_of = '')
         and (disabled is null or disabled = 0)  %s """ % last_sync_condition
 
-    erpnext_items.extend(frappe.db.sql(item_from_master, as_dict=1))
-
+    try:
+        erpnext_items.extend(frappe.db.sql(item_from_master, as_dict=1))
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Error in executing item_from_master query")
+        return [] 
     template_items = [item.name for item in erpnext_items if item.has_variants]
 
     if len(template_items) > 0:
-    #    item_price_condition += ' and i.variant_of not in (%s)'%(' ,'.join(["'%s'"]*len(template_items)))%tuple(template_items)
-        # escape raw item name
         for i in range(len(template_items)):
             template_items[i] = template_items[i].replace("'", r"\'")
-        # combine condition
-        item_price_condition += ' AND `tabItem`.`variant_of` NOT IN (\'{0}\')'.format(
-            ("' ,'".join(template_items)))
-    
-    item_from_item_price = """SELECT `tabItem`.`name`, 
-                                     `tabItem`.`item_code`, 
-                                     `tabItem`.`item_name`, 
-                                     `tabItem`.`item_group`, 
-                                     `tabItem`.`description`,
-                                     `tabItem`.`woocommerce_description`, 
-                                     `tabItem`.`has_variants`, 
-                                     `tabItem`.`variant_of`, 
-                                     `tabItem`.`stock_uom`, 
-                                     `tabItem`.`image`, 
-                                     `tabItem`.`woocommerce_product_id`,
-                                     `tabItem`.`woocommerce_variant_id`, 
-                                     `tabItem`.`sync_qty_with_woocommerce`, 
-                                     `tabItem`.`weight_per_unit`, 
-                                     `tabItem`.`weight_uom`
-        FROM `tabItem`, `tabItem Price`
-        WHERE `tabItem Price`.`price_list` = '%s' 
-          AND `tabItem`.`name` = `tabItem Price`.`item_code`
-          AND `tabItem`.`sync_with_woocommerce` = 1 
-          AND (`tabItem`.`disabled` IS NULL OR `tabItem`.`disabled` = 0) %s""" %(price_list, item_price_condition)
-    frappe.log_error(message="{0}".format(item_from_item_price), title="Error in get_erpnext_items")
-    # frappe.log_error("{0}".format(item_from_item_price))
+        item_price_condition += ' AND `tabItem`.`variant_of` NOT IN (\'{0}\')'.format(("' ,'".join(template_items)))
+
+    item_from_item_price = """
+    SELECT 
+        `tabItem`.`name`, 
+        `tabItem`.`item_code`, 
+        `tabItem`.`item_name`, 
+        `tabItem`.`item_group`, 
+        `tabItem`.`description`,
+        `tabItem`.`woocommerce_description`, 
+        `tabItem`.`has_variants`, 
+        `tabItem`.`variant_of`, 
+        `tabItem`.`stock_uom`, 
+        `tabItem`.`image`, 
+        `tabItem`.`woocommerce_product_id`,
+        `tabItem`.`woocommerce_variant_id`, 
+        `tabItem`.`sync_qty_with_woocommerce`, 
+        `tabItem`.`weight_per_unit`, 
+        `tabItem`.`weight_uom`
+    FROM 
+        `tabItem`
+    INNER JOIN 
+        `tabItem Price` ON `tabItem`.`name` = `tabItem Price`.`item_code`
+    WHERE 
+        `tabItem Price`.`price_list` = %s
+        AND `tabItem`.`sync_with_woocommerce` = 1 
+        AND (`tabItem`.`disabled` IS NULL OR `tabItem`.`disabled` = 0) 
+        %s
+    """ % (frappe.db.escape(price_list), item_price_condition) 
+
+    try:
+        updated_price_item_list = frappe.db.sql(item_from_item_price, as_dict=1)
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Error in executing item_from_item_price query")
+        return erpnext_items 
+
+    unique_items = [frappe._dict(tupleized) for tupleized in set(tuple(item.items()) for item in erpnext_items + updated_price_item_list)]
+    return unique_items
 
 
-    updated_price_item_list = frappe.db.sql(item_from_item_price, as_dict=1)
-
-    # to avoid item duplication
-    return [frappe._dict(tupleized) for tupleized in set(tuple(item.items())
-        for item in erpnext_items + updated_price_item_list)]
 
 def sync_item_with_woocommerce(item, price_list, warehouse, woocommerce_item=None):
     variant_item_name_list = []
