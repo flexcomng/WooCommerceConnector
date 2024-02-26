@@ -44,41 +44,84 @@ def sync_orders():
 #             close_synced_woocommerce_order(woocommerce_order.get("id"))
 
 
+# def sync_woocommerce_orders():
+#     frappe.local.form_dict.count_dict["orders"] = 0
+#     woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
+#     woocommerce_order_status_for_import = get_woocommerce_order_status_for_import()
+#     if not len(woocommerce_order_status_for_import) > 0:
+#         woocommerce_order_status_for_import = ['processing']
+        
+#     for woocommerce_order_status in woocommerce_order_status_for_import:
+#         for woocommerce_order in get_woocommerce_orders(woocommerce_order_status):
+#             so = frappe.db.get_value("Sales Order", {"woocommerce_order_id": woocommerce_order.get("id")}, "name")
+#             if not so:
+#                 if valid_customer_and_product(woocommerce_order):
+#                     try:
+#                         create_order(woocommerce_order, woocommerce_settings)
+#                         frappe.local.form_dict.count_dict["orders"] += 1
+
+#                     except woocommerceError as e:
+#                         make_woocommerce_log(status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
+#                             request_data=woocommerce_order, exception=True)
+#                     except Exception as e:
+#                         if e.args and e.args[0] and e.args[0].startswith("402"):
+#                             raise e
+#                         else:
+#                             make_woocommerce_log(title=str(e), status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
+#                                                 request_data=woocommerce_order, exception=True)
+
+#                     # except Exception as e:
+#                     #     if e.args and e.args[0] and e.args[0].startswith("402"):
+#                     #         raise e
+#                     #     else:
+#                     #         make_woocommerce_log(title=e.message, status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
+#                     #             request_data=woocommerce_order, exception=True)
+#             # Check status before closing the order as synced
+#             if woocommerce_order.get("status").lower() == "processing":
+#                 close_synced_woocommerce_order(woocommerce_order.get("id"))
+
 def sync_woocommerce_orders():
     frappe.local.form_dict.count_dict["orders"] = 0
     woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
     woocommerce_order_status_for_import = get_woocommerce_order_status_for_import()
-    if not len(woocommerce_order_status_for_import) > 0:
+    if not woocommerce_order_status_for_import:
         woocommerce_order_status_for_import = ['processing']
-        
+    
     for woocommerce_order_status in woocommerce_order_status_for_import:
-        for woocommerce_order in get_woocommerce_orders(woocommerce_order_status):
+        orders = get_woocommerce_orders(woocommerce_order_status)
+        # Log the retrieval of orders
+        make_woocommerce_log(title=f"Retrieved Orders", status="Success", method="sync_woocommerce_orders",
+                             message=f"Retrieved {len(orders)} orders with status '{woocommerce_order_status}'.",
+                             request_data={'order_status': woocommerce_order_status}, exception=False)
+        
+        for woocommerce_order in orders:
             so = frappe.db.get_value("Sales Order", {"woocommerce_order_id": woocommerce_order.get("id")}, "name")
             if not so:
                 if valid_customer_and_product(woocommerce_order):
                     try:
                         create_order(woocommerce_order, woocommerce_settings)
                         frappe.local.form_dict.count_dict["orders"] += 1
+                        # Log successful order creation
+                        make_woocommerce_log(title="Order Synced", status="Success", method="sync_woocommerce_orders",
+                                             message=f"Successfully created order {woocommerce_order.get('id')}.",
+                                             request_data=woocommerce_order, exception=False)
 
                     except woocommerceError as e:
                         make_woocommerce_log(status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-                            request_data=woocommerce_order, exception=True)
+                                             request_data=woocommerce_order, exception=True)
                     except Exception as e:
                         if e.args and e.args[0] and e.args[0].startswith("402"):
                             raise e
                         else:
                             make_woocommerce_log(title=str(e), status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-                                                request_data=woocommerce_order, exception=True)
+                                                 request_data=woocommerce_order, exception=True)
 
-                    # except Exception as e:
-                    #     if e.args and e.args[0] and e.args[0].startswith("402"):
-                    #         raise e
-                    #     else:
-                    #         make_woocommerce_log(title=e.message, status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-                    #             request_data=woocommerce_order, exception=True)
-            # Check status before closing the order as synced
             if woocommerce_order.get("status").lower() == "processing":
                 close_synced_woocommerce_order(woocommerce_order.get("id"))
+
+
+
+
 
 def get_woocommerce_order_status_for_import():
     status_list = []
