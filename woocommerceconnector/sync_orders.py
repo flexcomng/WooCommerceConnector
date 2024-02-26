@@ -15,70 +15,6 @@ from datetime import datetime
 def sync_orders():
     sync_woocommerce_orders()
 
-# def sync_woocommerce_orders():
-#     frappe.local.form_dict.count_dict["orders"] = 0
-#     woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
-#     woocommerce_order_status_for_import = get_woocommerce_order_status_for_import()
-#     if not len(woocommerce_order_status_for_import) > 0:
-#         woocommerce_order_status_for_import = ['processing']
-        
-#     for woocommerce_order_status in woocommerce_order_status_for_import:
-#         for woocommerce_order in get_woocommerce_orders(woocommerce_order_status):
-#             so = frappe.db.get_value("Sales Order", {"woocommerce_order_id": woocommerce_order.get("id")}, "name")
-#             if not so:
-#                 if valid_customer_and_product(woocommerce_order):
-#                     try:
-#                         create_order(woocommerce_order, woocommerce_settings)
-#                         frappe.local.form_dict.count_dict["orders"] += 1
-
-#                     except woocommerceError as e:
-#                         make_woocommerce_log(status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-#                             request_data=woocommerce_order, exception=True)
-#                     except Exception as e:
-#                         if e.args and e.args[0] and e.args[0].decode("utf-8").startswith("402"):
-#                             raise e
-#                         else:
-#                             make_woocommerce_log(title=e.message, status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-#                                 request_data=woocommerce_order, exception=True)
-#             # close this order as synced
-#             close_synced_woocommerce_order(woocommerce_order.get("id"))
-
-
-# def sync_woocommerce_orders():
-#     frappe.local.form_dict.count_dict["orders"] = 0
-#     woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
-#     woocommerce_order_status_for_import = get_woocommerce_order_status_for_import()
-#     if not len(woocommerce_order_status_for_import) > 0:
-#         woocommerce_order_status_for_import = ['processing']
-        
-#     for woocommerce_order_status in woocommerce_order_status_for_import:
-#         for woocommerce_order in get_woocommerce_orders(woocommerce_order_status):
-#             so = frappe.db.get_value("Sales Order", {"woocommerce_order_id": woocommerce_order.get("id")}, "name")
-#             if not so:
-#                 if valid_customer_and_product(woocommerce_order):
-#                     try:
-#                         create_order(woocommerce_order, woocommerce_settings)
-#                         frappe.local.form_dict.count_dict["orders"] += 1
-
-#                     except woocommerceError as e:
-#                         make_woocommerce_log(status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-#                             request_data=woocommerce_order, exception=True)
-#                     except Exception as e:
-#                         if e.args and e.args[0] and e.args[0].startswith("402"):
-#                             raise e
-#                         else:
-#                             make_woocommerce_log(title=str(e), status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-#                                                 request_data=woocommerce_order, exception=True)
-
-#                     # except Exception as e:
-#                     #     if e.args and e.args[0] and e.args[0].startswith("402"):
-#                     #         raise e
-#                     #     else:
-#                     #         make_woocommerce_log(title=e.message, status="Error", method="sync_woocommerce_orders", message=frappe.get_traceback(),
-#                     #             request_data=woocommerce_order, exception=True)
-#             # Check status before closing the order as synced
-#             if woocommerce_order.get("status").lower() == "processing":
-#                 close_synced_woocommerce_order(woocommerce_order.get("id"))
 
 def sync_woocommerce_orders():
     frappe.local.form_dict.count_dict["orders"] = 0
@@ -136,19 +72,6 @@ def valid_customer_and_product(woocommerce_order):
         return False
     warehouse = frappe.get_doc("WooCommerce Config", "WooCommerce Config").warehouse
 	
-	# old function item based on sku
-    # for item in woocommerce_order.get("line_items"):
-        # if item.get("sku"):
-            # if not frappe.db.get_value("Item", {"barcode": item.get("sku")}, "item_code"):
-                # make_woocommerce_log(title="Item missing in ERPNext!", status="Error", method="valid_customer_and_product", message="Item with sku {0} is missing in ERPNext! The Order {1} will not be imported! For details of order see below".format(item.get("sku"), woocommerce_order.get("id")),
-                    # request_data=woocommerce_order, exception=True)
-                # return False
-        # else:
-            # make_woocommerce_log(title="Item barcode missing in WooCommerce!", status="Error", method="valid_customer_and_product", message="Item barcode is missing in WooCommerce! The Order {0} will not be imported! For details of order see below".format(woocommerce_order.get("id")),
-                # request_data=woocommerce_order, exception=True)
-            # return False
-			
-	# new function item based on product id
     for item in woocommerce_order.get("line_items"):
         if item.get("product_id"):
             if not frappe.db.get_value("Item", {"woocommerce_product_id": item.get("product_id")}, "item_code"):
@@ -181,11 +104,7 @@ def valid_customer_and_product(woocommerce_order):
             create_customer(woocommerce_customer, woocommerce_customer_list=[])
 
     if customer_id == 0: # we are dealing with a guest customer 
-        # woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
-        # if not woocommerce_settings.default_customer:
-            # make_woocommerce_log(title="Missing Default Customer", status="Error", method="valid_customer_and_product", message="Missing Default Customer in WooCommerce Config",
-                # request_data=woocommerce_order, exception=True)
-            # return False
+
         if not frappe.db.get_value("Customer", {"woocommerce_customer_id": "Guest of Order-ID: {0}".format(woocommerce_order.get("id"))}, "name", False,True):
             make_woocommerce_log(title="create new customer based on guest order", status="Started", method="valid_customer_and_product", message="creat new customer based on guest order",
                 request_data=woocommerce_order, exception=False)
@@ -234,21 +153,6 @@ def create_new_customer_of_guest(woocommerce_order):
             make_woocommerce_log(title=str(e), status="Error", method="create_new_customer_of_guest", message=frappe.get_traceback(),
                 request_data=woocommerce_order, exception=True)
 
-            
-    # except Exception as e:
-    #     if e.args[0] and e.args[0].startswith("402"):
-    #         raise e
-    #     else:
-    #         make_woocommerce_log(title=e.message, status="Error", method="create_new_customer_of_guest", message=frappe.get_traceback(),
-    #             request_data=woocommerce_order, exception=True)
-        
-# def get_country_name(code):
-#     coutry_name = ''
-#     coutry_names = """SELECT `country_name` FROM `tabCountry` WHERE `code` = '{0}'""".format(code.lower())
-#     for _coutry_name in frappe.db.sql(coutry_names, as_dict=1):
-#         coutry_name = _coutry_name.country_name
-#     return coutry_name
-
 def get_country_name(code):
     country_name = ''
     if code is None:
@@ -259,21 +163,6 @@ def get_country_name(code):
             country_name = _country_name.country_name
     return country_name
 
-
-
-# def create_order(woocommerce_order, woocommerce_settings, company=None):
-#       # Only proceed if order status is "processing"
-#     if woocommerce_order.get("status").lower() != "processing":
-#         return
-
-#     so = create_sales_order(woocommerce_order, woocommerce_settings, company)
-#     # check if sales invoice should be created
-#     if cint(woocommerce_settings.sync_sales_invoice) == 1:
-#         create_sales_invoice(woocommerce_order, woocommerce_settings, so)
-
-#     #Fix this -- add shipping stuff
-#     #if woocommerce_order.get("fulfillments") and cint(woocommerce_settings.sync_delivery_note):
-#         #create_delivery_note(woocommerce_order, woocommerce_settings, so)
 
 # def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
      # Only proceed if order status is "processing"
@@ -437,13 +326,13 @@ def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
             "taxes_and_charges": tax_rules,
             "customer_address": billing_address,
             "shipping_address_name": shipping_address,
-            "transaction_date": date_created        # pull posting date from WooCommerce
+            "transaction_date": date_created
         })
 
         so.append('payment_schedule', {
             'due_date': date_created,
-            'invoice_portion': 100.0,  # 100% of the invoice
-            'payment_amount': flt(woocommerce_order.get("total")),  # grand total of the order
+            'invoice_portion': 100.0,
+            'payment_amount': flt(woocommerce_order.get("total")),
         })
 
         so.flags.ignore_mandatory = True
@@ -646,23 +535,10 @@ def get_shipping_account_head(shipping):
     return shipping_account
 
 
-
-
-# def get_tax_account_head(tax):
-#     tax_title = tax.get("name").encode("utf-8") or tax.get("method_title").encode("utf-8")
-
-#     tax_account =  frappe.db.get_value("woocommerce Tax Account", \
-#         {"parent": "WooCommerce Config", "woocommerce_tax": tax_title}, "tax_account")
-
-#     if not tax_account:
-#         frappe.throw("Tax Account not specified for woocommerce Tax {0}".format(tax.get("name")))
-
-#     return tax_account
-
 def get_tax_account_head(tax):
     tax_title = tax.get("name") or tax.get("method_title")
     if tax_title:
-        tax_title = tax_title.encode("utf-8").decode("utf-8")  # this will ensure tax_title is a string
+        tax_title = tax_title.encode("utf-8").decode("utf-8")
 
     tax_account =  frappe.db.get_value("woocommerce Tax Account", \
         {"parent": "WooCommerce Config", "woocommerce_tax": tax_title}, "tax_account")
