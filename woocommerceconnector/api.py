@@ -3,6 +3,7 @@
 # For license information, please see license.txt
 
 from __future__ import unicode_literals
+import base64
 import frappe
 from frappe import _
 from .exceptions import woocommerceError

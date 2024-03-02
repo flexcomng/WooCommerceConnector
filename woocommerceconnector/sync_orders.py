@@ -273,73 +273,164 @@ def create_order(woocommerce_order, woocommerce_settings, company=None):
         #create_delivery_note(woocommerce_order, woocommerce_settings, so)
     return so
 
-def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
-    # Only proceed if order status is "processing"
-    if woocommerce_order.get("status").lower() != "processing":
-        return
+# def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
+#     # Only proceed if order status is "processing"
+#     if woocommerce_order.get("status").lower() != "processing":
+#         return
 
-    id = str(woocommerce_order.get("customer_id"))
-    customer = frappe.get_all("Customer", filters=[["woocommerce_customer_id", "=", id]], fields=['name'])
-    backup_customer = frappe.get_all("Customer", filters=[["woocommerce_customer_id", "=", "Guest of Order-ID: {0}".format(woocommerce_order.get("id"))]], fields=['name'])
-    if customer:
-        customer = customer[0]['name']
-    elif backup_customer:
-        customer = backup_customer[0]['name']
-    else:
-        frappe.log_error("No customer found. This should never happen.")
+#     id = str(woocommerce_order.get("customer_id"))
+#     customer = frappe.get_all("Customer", filters=[["woocommerce_customer_id", "=", id]], fields=['name'])
+#     backup_customer = frappe.get_all("Customer", filters=[["woocommerce_customer_id", "=", "Guest of Order-ID: {0}".format(woocommerce_order.get("id"))]], fields=['name'])
+#     if customer:
+#         customer = customer[0]['name']
+#     elif backup_customer:
+#         customer = backup_customer[0]['name']
+#     else:
+#         frappe.log_error("No customer found. This should never happen.")
 
-    so = frappe.db.get_value("Sales Order", {"woocommerce_order_id": woocommerce_order.get("id")}, "name")
-    if not so:
-        # get shipping/billing address
-        shipping_address = get_customer_address_from_order('Shipping', woocommerce_order, customer)
-        billing_address = get_customer_address_from_order('Billing', woocommerce_order, customer)
+#     so = frappe.db.get_value("Sales Order", {"woocommerce_order_id": woocommerce_order.get("id")}, "name")
+#     if not so:
+#         # get shipping/billing address
+#         shipping_address = get_customer_address_from_order('Shipping', woocommerce_order, customer)
+#         billing_address = get_customer_address_from_order('Billing', woocommerce_order, customer)
 
-        # get applicable tax rule from configuration
-        tax_rules = frappe.get_all("WooCommerce Tax Rule", filters={'currency': woocommerce_order.get("currency")}, fields=['tax_rule'])
-        if not tax_rules:
-            # fallback: currency has no tax rule, try catch-all
-            tax_rules = frappe.get_all("WooCommerce Tax Rule", filters={'currency': "%"}, fields=['tax_rule'])
-        if tax_rules:
-            tax_rules = tax_rules[0]['tax_rule']
-        else:
-            tax_rules = ""
+#         # get applicable tax rule from configuration
+#         tax_rules = frappe.get_all("WooCommerce Tax Rule", filters={'currency': woocommerce_order.get("currency")}, fields=['tax_rule'])
+#         if not tax_rules:
+#             # fallback: currency has no tax rule, try catch-all
+#             tax_rules = frappe.get_all("WooCommerce Tax Rule", filters={'currency': "%"}, fields=['tax_rule'])
+#         if tax_rules:
+#             tax_rules = tax_rules[0]['tax_rule']
+#         else:
+#             tax_rules = ""
         
-        date_created = woocommerce_order.get("date_created")
-        # Parse the date and time from the string, then format the date part as 'YYYY-MM-DD'
-        date_created = datetime.strptime(date_created, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d')
-        so = frappe.get_doc({
-            "doctype": "Sales Order",
-            "naming_series": woocommerce_settings.sales_order_series or "SO-woocommerce-",
-            "woocommerce_order_id": woocommerce_order.get("id"),
-            "woocommerce_payment_method": woocommerce_order.get("payment_method_title"),
-            "customer": customer,
-            "customer_group": woocommerce_settings.customer_group,  # hard code group, as this was missing since v12
-            "delivery_date": date_created,
-            "company": woocommerce_settings.company,
-            "selling_price_list": woocommerce_settings.price_list,
-            "ignore_pricing_rule": 1,
-            "items": get_order_items(woocommerce_order.get("line_items"), woocommerce_settings),
-            "taxes": get_order_taxes(woocommerce_order, woocommerce_settings),
-            #"apply_discount_on": "Net Total",
-            #"discount_amount": flt(woocommerce_order.get("discount_total") or 0),
-            "currency": woocommerce_order.get("currency"),
-            "taxes_and_charges": tax_rules,
-            "customer_address": billing_address,
-            "shipping_address_name": shipping_address,
-            "transaction_date": date_created
-        })
+#         date_created = woocommerce_order.get("date_created")
+#         # Parse the date and time from the string, then format the date part as 'YYYY-MM-DD'
+#         date_created = datetime.strptime(date_created, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d')
+#         so = frappe.get_doc({
+#             "doctype": "Sales Order",
+#             "naming_series": woocommerce_settings.sales_order_series or "SO-woocommerce-",
+#             "woocommerce_order_id": woocommerce_order.get("id"),
+#             "woocommerce_payment_method": woocommerce_order.get("payment_method_title"),
+#             "customer": customer,
+#             "customer_group": woocommerce_settings.customer_group,  # hard code group, as this was missing since v12
+#             "delivery_date": date_created,
+#             "company": woocommerce_settings.company,
+#             "selling_price_list": woocommerce_settings.price_list,
+#             "ignore_pricing_rule": 1,
+#             "items": get_order_items(woocommerce_order.get("line_items"), woocommerce_settings),
+#             "taxes": get_order_taxes(woocommerce_order, woocommerce_settings),
+#             #"apply_discount_on": "Net Total",
+#             #"discount_amount": flt(woocommerce_order.get("discount_total") or 0),
+#             "currency": woocommerce_order.get("currency"),
+#             "taxes_and_charges": tax_rules,
+#             "customer_address": billing_address,
+#             "shipping_address_name": shipping_address,
+#             "transaction_date": date_created
+#         })
 
-        so.append('payment_schedule', {
-            'due_date': date_created,
-            'invoice_portion': 100.0,
-            'payment_amount': flt(woocommerce_order.get("total")),
-        })
+#         so.append('payment_schedule', {
+#             'due_date': date_created,
+#             'invoice_portion': 100.0,
+#             'payment_amount': flt(woocommerce_order.get("total")),
+#         })
 
+#         so.flags.ignore_mandatory = True
+
+#         # alle orders in ERP = submitted
+#         so.save(ignore_permissions=True)
+#         so.submit()
+
+
+
+def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
+    try:
+        make_woocommerce_log(title="Sales Order Process Initiated", status="Started", method="create_sales_order", 
+                             message="Starting the sales order creation process.", request_data=woocommerce_order, exception=False)
+        
+        if woocommerce_order.get("status").lower() != "processing":
+            raise ValueError(f"Order status {woocommerce_order.get('status')} is not 'processing'.")
+        
+        customer_name = get_customer_name(woocommerce_order.get("customer_id"), woocommerce_order)
+        order_total = flt(woocommerce_order.get("total", 0))
+        date_created = validate_and_format_date(woocommerce_order.get("date_created", ""))
+        
+        so_doc = prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_name, date_created, order_total)
+        
+        
+        so = frappe.get_doc(so_doc)
         so.flags.ignore_mandatory = True
-
-        # alle orders in ERP = submitted
         so.save(ignore_permissions=True)
+
         so.submit()
+        
+        make_woocommerce_log(title="Sales Order Submitted", status="Success", method="create_sales_order",
+                             message=f"Sales order {so.name} submitted successfully.", request_data={"so_name": so.name}, exception=False)
+
+        return {"status": "Success", "message": f"Sales Order {so.name} successfully created."}
+    except Exception as e:
+        make_woocommerce_log(title="Sales Order Creation Failed", status="Error", method="create_sales_order",
+                             message=str(e), request_data=woocommerce_order, exception=True)
+        return {"status": "Error", "message": str(e)}
+    
+
+
+def get_customer_name(customer_id, woocommerce_order):
+    customer = frappe.get_all("Customer", filters=[["woocommerce_customer_id", "=", customer_id]], fields=['name'])
+    backup_customer = frappe.get_all("Customer", filters=[["woocommerce_customer_id", "=", f"Guest of Order-ID: {woocommerce_order.get('id')}"]], fields=['name'])
+    if customer:
+        return customer[0]['name']
+    elif backup_customer:
+        return backup_customer[0]['name']
+    else:
+        raise ValueError("No customer found for order.")
+
+def validate_and_format_date(date_str):
+    if not date_str:
+        raise ValueError("Date created is missing.")
+    return datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d')
+
+def prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_name, date_created, order_total):
+    items = []
+    for line_item in woocommerce_order.get("line_items", []):
+        item_code = map_woocommerce_product_to_erp_item(line_item.get("product_id"))
+        items.append({
+            "item_code": item_code,
+            "qty": line_item.get("quantity"),
+            "rate": line_item.get("price"), 
+        })
+    
+    return {
+        "doctype": "Sales Order",
+        "naming_series": woocommerce_settings.sales_order_series or "SO-woocommerce-",
+        "woocommerce_order_id": woocommerce_order.get("id"),
+        "woocommerce_payment_method": woocommerce_order.get("payment_method_title"),
+        "customer": customer_name,
+        "delivery_date": date_created,
+        "company": woocommerce_settings.company,
+        "selling_price_list": woocommerce_settings.price_list,
+        "ignore_pricing_rule": 1,
+        "items": items,
+
+        "taxes": [], 
+        "currency": woocommerce_order.get("currency"),
+        "payment_schedule": [{
+            'due_date': date_created,
+            'invoice_portion': 100,
+            'payment_amount': order_total,
+        }]
+    }
+
+def map_woocommerce_product_to_erp_item(product_id):
+    item_code = frappe.db.get_value('Item', {'woocommerce_product_id': str(product_id)}, 'name')
+    if item_code:
+        return item_code
+    else:
+        make_woocommerce_log(title="Item Mapping Failed", status="Error", method="create_sales_order",
+                             message=f"No ERPNext item found for WooCommerce product ID {product_id}", request_data={'product_id': product_id}, exception=True)
+        return None
+
+
 
 
 def get_customer_address_from_order(type, woocommerce_order, customer):
