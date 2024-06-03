@@ -348,16 +348,21 @@ def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
         make_woocommerce_log(title="Sales Order Process Initiated", status="Started", method="create_sales_order", 
                              message="Starting the sales order creation process.", request_data=woocommerce_order, exception=False)
         
+        if not isinstance(woocommerce_order, dict):
+            raise ValueError("woocommerce_order is not a dictionary")
+
         if woocommerce_order.get("status").lower() != "processing":
             raise ValueError(f"Order status {woocommerce_order.get('status')} is not 'processing'.")
-        
+
         customer_name = get_customer_name(woocommerce_order.get("customer_id"), woocommerce_order)
         order_total = flt(woocommerce_order.get("total", 0))
         date_created = validate_and_format_date(woocommerce_order.get("date_created", ""))
         
-        so_doc = prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_name, date_created, order_total)
-        
-        
+        # Get taxes from the order
+        taxes = get_order_taxes(woocommerce_order, woocommerce_settings)
+
+        so_doc = prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_name, date_created, order_total, taxes)
+
         so = frappe.get_doc(so_doc)
         so.flags.ignore_mandatory = True
         so.save(ignore_permissions=True)
@@ -372,7 +377,7 @@ def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
         make_woocommerce_log(title="Sales Order Creation Failed", status="Error", method="create_sales_order",
                              message=str(e), request_data=woocommerce_order, exception=True)
         return {"status": "Error", "message": str(e)}
-    
+
 
 
 def get_customer_name(customer_id, woocommerce_order):
@@ -390,7 +395,8 @@ def validate_and_format_date(date_str):
         raise ValueError("Date created is missing.")
     return datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d')
 
-def prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_name, date_created, order_total):
+
+def prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_name, date_created, order_total, taxes):
     items = []
     for line_item in woocommerce_order.get("line_items", []):
         item_code = map_woocommerce_product_to_erp_item(line_item.get("product_id"))
@@ -411,8 +417,7 @@ def prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_na
         "selling_price_list": woocommerce_settings.price_list,
         "ignore_pricing_rule": 1,
         "items": items,
-
-        "taxes": [], 
+        "taxes": taxes,
         "currency": woocommerce_order.get("currency"),
         "payment_schedule": [{
             'due_date': date_created,
@@ -420,6 +425,8 @@ def prepare_sales_order_doc(woocommerce_order, woocommerce_settings, customer_na
             'payment_amount': order_total,
         }]
     }
+
+
 
 def map_woocommerce_product_to_erp_item(product_id):
     item_code = frappe.db.get_value('Item', {'woocommerce_product_id': str(product_id)}, 'name')
@@ -464,7 +471,7 @@ def get_customer_address_from_order(type, woocommerce_order, customer):
 
         except Exception as e:
             make_woocommerce_log(title=e, status="Error", method="create_customer_address", message=frappe.get_traceback(),
-                    request_data=woocommerce_customer, exception=True)
+                    request_data=address_name, exception=True)
 
     return address_name
 
@@ -538,14 +545,15 @@ def get_item_code(woocommerce_item):
 
     return item_code
 
+
 def get_order_taxes(woocommerce_order, woocommerce_settings):
     taxes = []
-    for tax in woocommerce_order.get("tax_lines"):
-        
+
+    for tax in woocommerce_order.get("tax_lines", []):
         woocommerce_tax = get_woocommerce_tax(tax.get("rate_id"))
         rate = woocommerce_tax.get("rate")
         name = woocommerce_tax.get("name")
-        
+
         taxes.append({
             "charge_type": "Actual",
             "account_head": get_tax_account_head(woocommerce_tax),
@@ -555,22 +563,15 @@ def get_order_taxes(woocommerce_order, woocommerce_settings):
             "included_in_print_rate": 0,
             "cost_center": woocommerce_settings.cost_center
         })
-    # old code with conditional brutto/netto prices
-    # taxes.append({
-        #     "charge_type": "On Net Total" if woocommerce_order.get("prices_include_tax") else "Actual",
-        #     "account_head": get_tax_account_head(woocommerce_tax),
-        #     "description": "{0} - {1}%".format(name, rate),
-        #     "rate": rate,
-        #     "tax_amount": flt(tax.get("tax_total") or 0) + flt(tax.get("shipping_tax_total") or 0), 
-        #     "included_in_print_rate": 1 if woocommerce_order.get("prices_include_tax") else 0,
-        #     "cost_center": woocommerce_settings.cost_center
-        # })
-    taxes = update_taxes_with_fee_lines(taxes, woocommerce_order.get("fee_lines"), woocommerce_settings)
-    taxes = update_taxes_with_shipping_lines(taxes, woocommerce_order.get("shipping_lines"), woocommerce_settings)
+
+    taxes = update_taxes_with_fee_lines(taxes, woocommerce_order.get("fee_lines", []), woocommerce_settings)
+    taxes = update_taxes_with_shipping_lines(taxes, woocommerce_order.get("shipping_lines", []), woocommerce_settings)
 
     return taxes
 
+
 def update_taxes_with_fee_lines(taxes, fee_lines, woocommerce_settings):
+
     for fee_charge in fee_lines:
         taxes.append({
             "charge_type": "Actual",
@@ -583,47 +584,41 @@ def update_taxes_with_fee_lines(taxes, fee_lines, woocommerce_settings):
     return taxes
 
 def update_taxes_with_shipping_lines(taxes, shipping_lines, woocommerce_settings):
-    for shipping_charge in shipping_lines:
-        #
-        taxes.append({
-            "charge_type": "Actual",
-            "account_head": get_shipping_account_head(shipping_charge["method_title"]),
-            "description": shipping_charge["method_title"],
-            "tax_amount": shipping_charge["total"],
-            "cost_center": woocommerce_settings.cost_center
-        })
+    if not shipping_lines:
+
+        return taxes
+
+    for index, shipping_charge in enumerate(shipping_lines):
+
+        try:
+            account_head = get_shipping_account_head(shipping_charge)
+            taxes.append({
+                "charge_type": "Actual",
+                "account_head": account_head,
+                "description": shipping_charge["method_title"],
+                "tax_amount": flt(shipping_charge["total"]),
+                "cost_center": woocommerce_settings.cost_center
+            })
+        except Exception as e:
+            make_woocommerce_log(title="Error Processing Shipping Line", status="Error", method="update_taxes_with_shipping_lines",
+                                 message=f"Error processing shipping line {index + 1}: {str(e)}", request_data=shipping_charge, exception=True)
+
 
     return taxes
 
 
 
-# def get_shipping_account_head(shipping):
-#     shipping_title = shipping.get("method_title")
-    
-#     if shipping_title:
-#         shipping_title = shipping_title.encode("utf-8").decode("utf-8")  # ensure it's a string
-
-#     shipping_account =  frappe.db.get_value("woocommerce Tax Account", \
-#             {"parent": "WooCommerce Config", "woocommerce_tax": shipping_title}, "tax_account")
-
-#     if not shipping_account:
-#             frappe.throw("Tax Account not specified for woocommerce shipping method {0}".format(shipping.get("method_title")))
-
-#     return shipping_account
-
 def get_shipping_account_head(shipping):
     shipping_title = shipping.get("method_title")
     
     if shipping_title:
-        shipping_title = shipping_title.encode("utf-8").decode("utf-8")  # ensure it's a string
+        shipping_title = shipping_title.encode("utf-8").decode("utf-8")
 
-    shipping_account =  frappe.db.get_value("woocommerce Tax Account", \
-            {"parent": "WooCommerce Config", "woocommerce_tax": shipping_title}, "tax_account")
-
-    if not shipping_account:
-        frappe.throw(f"Tax Account not specified for woocommerce shipping method {shipping_title}")
-
+    shipping_account = frappe.db.get_value("woocommerce Tax Account", 
+                                           {"parent": "WooCommerce Config", "woocommerce_tax": shipping_title}, "tax_account")
+    
     return shipping_account
+
 
 
 def get_tax_account_head(tax):
@@ -676,4 +671,4 @@ def close_synced_woocommerce_order(wooid):
         put_request("orders/{0}".format(wooid), order_data)
     except requests.exceptions.HTTPError as e:
         make_woocommerce_log(title=e.message, status="Error", method="close_synced_woocommerce_order", message=frappe.get_traceback(),
-            request_data=woocommerce_order, exception=True)
+            request_data=order_data, exception=True)
