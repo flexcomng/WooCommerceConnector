@@ -831,17 +831,68 @@ def update_item_stock_qty(force=False):
                 make_woocommerce_log(title="{0}".format(e), status="Error", method="sync_woocommerce_items", message=frappe.get_traceback(),
                     request_data=item, exception=True)
 
+# def update_item_stock(item_code, woocommerce_settings, bin=None, force=False):
+#     item = frappe.get_doc("Item", item_code)
+#     if item.sync_qty_with_woocommerce:
+#         if not item.woocommerce_product_id:
+#             make_woocommerce_log(title="WooCommerce ID missing", status="Error", method="sync_woocommerce_items",
+#                 message="Please sync WooCommerce IDs to ERP (missing for item {0})".format(item_code), request_data=item_code, exception=True)
+#         else:
+#             # removed bin date check
+#             # check bin creation date
+#             last_sync_datetime = get_datetime(woocommerce_settings.last_sync_datetime)
+#             bin_since_last_sync = frappe.db.sql("""SELECT COUNT(`name`) FROM `tabBin` WHERE `item_code` = '{item_code}' AND `modified` > '{last_sync_datetime}'""".format(item_code=item_code, last_sync_datetime=last_sync_datetime), as_list=True)[0][0]
+#             if bin_since_last_sync > 0 or force != False:
+#                 bin = get_bin(item_code, woocommerce_settings.warehouse)
+
+#                 actual_qty = bin.actual_qty
+#                 reserved_qty = bin.reserved_qty
+#                 qty = actual_qty - reserved_qty
+
+#                 for warehouse in woocommerce_settings.warehouses:
+#                     _bin = get_bin(item_code, warehouse.warehouse)
+#                     qty += (_bin.actual_qty - _bin.reserved_qty)
+
+# 				# bugfix #1582: variant control from WooCommerce, not ERPNext
+# 				#if item.woocommerce_variant_id and int(item.woocommerce_variant_id) > 0:
+# 					#item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, item.woocommerce_variant_id, is_variant=True, actual_qty=qty)
+# 				#else:
+# 					#item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, item.woocommerce_variant_id, actual_qty=qty)
+#                 if item.woocommerce_product_id and item.variant_of:
+# 					# item = variant
+#                     template_item = frappe.get_doc("Item", item.variant_of).woocommerce_product_id
+#                     item_data, resource = get_product_update_dict_and_resource(template_item, woocommerce_variant_id=item.woocommerce_product_id, is_variant=True, actual_qty=qty)
+#                 else:
+# 					# item = single
+#                     item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, actual_qty=qty)
+#                 try:
+# 					#make_woocommerce_log(title="Update stock of {0}".format(item.barcode), status="Started", method="update_item_stock", message="Resource: {0}, data: {1}".format(resource, item_data))
+#                     put_request(resource, item_data)
+#                 except requests.exceptions.HTTPError as e:
+#                     if e.args[0] and e.args[0].startswith("404"):
+#                         make_woocommerce_log(title=e.message, status="Error", method="update_item_stock", message=frappe.get_traceback(),
+#                             request_data=item_data, exception=True)
+#                         disable_woocommerce_sync_for_item(item)
+#                     else:
+#                         raise e
+
+
 def update_item_stock(item_code, woocommerce_settings, bin=None, force=False):
     item = frappe.get_doc("Item", item_code)
     if item.sync_qty_with_woocommerce:
         if not item.woocommerce_product_id:
             make_woocommerce_log(title="WooCommerce ID missing", status="Error", method="sync_woocommerce_items",
-                message="Please sync WooCommerce IDs to ERP (missing for item {0})".format(item_code), request_data=item_code, exception=True)
+                                 message="Please sync WooCommerce IDs to ERP (missing for item {0})".format(item_code),
+                                 request_data=item_code, exception=True)
         else:
-            # removed bin date check
-            # check bin creation date
             last_sync_datetime = get_datetime(woocommerce_settings.last_sync_datetime)
-            bin_since_last_sync = frappe.db.sql("""SELECT COUNT(`name`) FROM `tabBin` WHERE `item_code` = '{item_code}' AND `modified` > '{last_sync_datetime}'""".format(item_code=item_code, last_sync_datetime=last_sync_datetime), as_list=True)[0][0]
+            bin_since_last_sync = frappe.db.sql("""
+                SELECT COUNT(`name`) 
+                FROM `tabBin` 
+                WHERE `item_code` = %s 
+                AND `modified` > %s
+            """, (item_code, last_sync_datetime), as_list=True)[0][0]
+
             if bin_since_last_sync > 0 or force != False:
                 bin = get_bin(item_code, woocommerce_settings.warehouse)
 
@@ -853,25 +904,21 @@ def update_item_stock(item_code, woocommerce_settings, bin=None, force=False):
                     _bin = get_bin(item_code, warehouse.warehouse)
                     qty += (_bin.actual_qty - _bin.reserved_qty)
 
-				# bugfix #1582: variant control from WooCommerce, not ERPNext
-				#if item.woocommerce_variant_id and int(item.woocommerce_variant_id) > 0:
-					#item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, item.woocommerce_variant_id, is_variant=True, actual_qty=qty)
-				#else:
-					#item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, item.woocommerce_variant_id, actual_qty=qty)
+
                 if item.woocommerce_product_id and item.variant_of:
-					# item = variant
+                    # item = variant
                     template_item = frappe.get_doc("Item", item.variant_of).woocommerce_product_id
                     item_data, resource = get_product_update_dict_and_resource(template_item, woocommerce_variant_id=item.woocommerce_product_id, is_variant=True, actual_qty=qty)
                 else:
-					# item = single
+                    # item = single
                     item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, actual_qty=qty)
+
                 try:
-					#make_woocommerce_log(title="Update stock of {0}".format(item.barcode), status="Started", method="update_item_stock", message="Resource: {0}, data: {1}".format(resource, item_data))
                     put_request(resource, item_data)
                 except requests.exceptions.HTTPError as e:
-                    if e.args[0] and e.args[0].startswith("404"):
+                    if e.args[0] and str(e.args[0]).startswith("404"):
                         make_woocommerce_log(title=e.message, status="Error", method="update_item_stock", message=frappe.get_traceback(),
-                            request_data=item_data, exception=True)
+                                             request_data=item_data, exception=True)
                         disable_woocommerce_sync_for_item(item)
                     else:
                         raise e
