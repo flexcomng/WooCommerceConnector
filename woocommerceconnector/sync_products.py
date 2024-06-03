@@ -124,10 +124,66 @@ def make_item(warehouse, woocommerce_item, woocommerce_item_list):
     
 #         frappe.db.commit()
         
+# def create_item(woocommerce_item, warehouse, has_variant=0, attributes=None, variant_of=None, woocommerce_item_list=[], template_item=None):
+#     woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
+#     valuation_method = woocommerce_settings.get("valuation_method")
+#     weight_unit =  woocommerce_settings.get("weight_unit")
+
+#     item_code = get_item_code(woocommerce_item, woocommerce_settings)
+
+#     item_dict = {
+#         "doctype": "Item",
+#         "woocommerce_product_id": woocommerce_item.get("id"),
+#         "woocommerce_variant_id": woocommerce_item.get("id"),
+#         "variant_of": variant_of,
+#         "sync_with_woocommerce": 1,
+#         "is_stock_item": 1,
+#         "item_name": woocommerce_item.get("name"),
+#         "valuation_method": valuation_method,
+#         "description": woocommerce_item.get("description") or woocommerce_item.get("name"),
+#         "woocommerce_description": woocommerce_item.get("description") or woocommerce_item.get("name"),
+#         "woocommerce_short_description": woocommerce_item.get("short_description") or woocommerce_item.get("name"),
+#         "item_group": get_item_group(woocommerce_item.get("categories")),
+#         "has_variants": has_variant,
+#         "attributes": attributes or [],
+#         "stock_uom": get_erpnext_uom(woocommerce_item, woocommerce_settings, attributes),
+#         "stock_keeping_unit": woocommerce_item.get("sku"), 
+#         "default_warehouse": warehouse,
+#         "image": get_item_image(woocommerce_item),
+#         "weight_uom": weight_unit, 
+#         "weight_per_unit": woocommerce_item.get("weight"),
+#         "web_long_description": woocommerce_item.get("description") or woocommerce_item.get("name")
+#     }
+
+#     if not item_code:
+#         item_dict['naming_series'] = woocommerce_settings.item_code_naming_series
+#         item_dict['item_code'] = str(woocommerce_item.get("id"))
+#     else:
+#         item_dict['item_code'] = item_code
+
+#     if template_item:
+#         item_dict["product_category"] = get_categories(template_item, is_variant=True)
+#     else:
+#         item_dict["product_category"] = get_categories(woocommerce_item, is_variant=False)
+
+#     existing_item = is_item_exists(item_dict, attributes, variant_of=variant_of, woocommerce_item_list=woocommerce_item_list)
+#     if existing_item:
+#         update_item(existing_item, item_dict)  # update only if item exists
+#     else:
+#         new_item = frappe.get_doc(item_dict)
+#         new_item.insert()
+#         name = new_item.name
+
+#         if not has_variant:
+#             add_to_price_list(woocommerce_item, name)
+
+#     frappe.db.commit()
+
+
 def create_item(woocommerce_item, warehouse, has_variant=0, attributes=None, variant_of=None, woocommerce_item_list=[], template_item=None):
     woocommerce_settings = frappe.get_doc("WooCommerce Config", "WooCommerce Config")
     valuation_method = woocommerce_settings.get("valuation_method")
-    weight_unit =  woocommerce_settings.get("weight_unit")
+    weight_unit = woocommerce_settings.get("weight_unit")
 
     item_code = get_item_code(woocommerce_item, woocommerce_settings)
 
@@ -166,6 +222,7 @@ def create_item(woocommerce_item, warehouse, has_variant=0, attributes=None, var
     else:
         item_dict["product_category"] = get_categories(woocommerce_item, is_variant=False)
 
+    # Check if the item already exists
     existing_item = is_item_exists(item_dict, attributes, variant_of=variant_of, woocommerce_item_list=woocommerce_item_list)
     if existing_item:
         update_item(existing_item, item_dict)  # update only if item exists
@@ -178,6 +235,8 @@ def create_item(woocommerce_item, warehouse, has_variant=0, attributes=None, var
             add_to_price_list(woocommerce_item, name)
 
     frappe.db.commit()
+
+
 
 def get_item_code(woocommerce_item, woocommerce_settings):
     item_code = ''
@@ -298,18 +357,51 @@ def get_categories(woocommerce_item, is_variant=False):
 
 
 # modified is_item_exists function
+# def is_item_exists(item_dict, attributes=None, variant_of=None, woocommerce_item_list=[]):
+#     woocommerce_item_list.append(cstr(item_dict.get("woocommerce_product_id")))
+
+#     erp_item_match = frappe.get_all("Item", 
+#                 filters={'woocommerce_product_id': item_dict.get("woocommerce_product_id")},
+#                 fields=['name', 'stock_uom'])
+#     if len(erp_item_match) > 0:
+#         # item does exist in ERP, return it
+#         return erp_item_match[0]
+
+#     else:
+#         return None
+
+
 def is_item_exists(item_dict, attributes=None, variant_of=None, woocommerce_item_list=[]):
-    woocommerce_item_list.append(cstr(item_dict.get("woocommerce_product_id")))
+    # Add the WooCommerce product ID to the list
+    woocommerce_product_id = cstr(item_dict.get("woocommerce_product_id"))
+    woocommerce_item_list.append(woocommerce_product_id)
 
+    # Log the incoming item_dict and the current state of woocommerce_item_list
+    make_woocommerce_log(title="Checking Item Existence", status="Info", method="is_item_exists",
+                         message=f"Checking if item exists with WooCommerce Product ID: {woocommerce_product_id}",
+                         request_data={"item_dict": item_dict, "woocommerce_item_list": woocommerce_item_list}, exception=False)
+
+    # Check if an item with the given WooCommerce product ID already exists in ERPNext
     erp_item_match = frappe.get_all("Item", 
-                filters={'woocommerce_product_id': item_dict.get("woocommerce_product_id")},
+                filters={'woocommerce_product_id': woocommerce_product_id},
                 fields=['name', 'stock_uom'])
-    if len(erp_item_match) > 0:
-        # item does exist in ERP, return it
+    
+    if erp_item_match:
+        # Log the existing item found
+        make_woocommerce_log(title="Item Found", status="Success", method="is_item_exists",
+                             message=f"Item exists in ERP with name: {erp_item_match[0]['name']}",
+                             request_data={"erp_item_match": erp_item_match[0]}, exception=False)
         return erp_item_match[0]
-
     else:
+        # Log that no item was found
+        make_woocommerce_log(title="Item Not Found", status="Info", method="is_item_exists",
+                             message="No item found in ERP with the given WooCommerce Product ID.",
+                             request_data={"item_dict": item_dict}, exception=False)
         return None
+
+
+
+
 
 def update_item(item_details, item_dict):
     item = frappe.get_doc("Item", item_details['name'])
@@ -830,51 +922,6 @@ def update_item_stock_qty(force=False):
             else:
                 make_woocommerce_log(title="{0}".format(e), status="Error", method="sync_woocommerce_items", message=frappe.get_traceback(),
                     request_data=item, exception=True)
-
-# def update_item_stock(item_code, woocommerce_settings, bin=None, force=False):
-#     item = frappe.get_doc("Item", item_code)
-#     if item.sync_qty_with_woocommerce:
-#         if not item.woocommerce_product_id:
-#             make_woocommerce_log(title="WooCommerce ID missing", status="Error", method="sync_woocommerce_items",
-#                 message="Please sync WooCommerce IDs to ERP (missing for item {0})".format(item_code), request_data=item_code, exception=True)
-#         else:
-#             # removed bin date check
-#             # check bin creation date
-#             last_sync_datetime = get_datetime(woocommerce_settings.last_sync_datetime)
-#             bin_since_last_sync = frappe.db.sql("""SELECT COUNT(`name`) FROM `tabBin` WHERE `item_code` = '{item_code}' AND `modified` > '{last_sync_datetime}'""".format(item_code=item_code, last_sync_datetime=last_sync_datetime), as_list=True)[0][0]
-#             if bin_since_last_sync > 0 or force != False:
-#                 bin = get_bin(item_code, woocommerce_settings.warehouse)
-
-#                 actual_qty = bin.actual_qty
-#                 reserved_qty = bin.reserved_qty
-#                 qty = actual_qty - reserved_qty
-
-#                 for warehouse in woocommerce_settings.warehouses:
-#                     _bin = get_bin(item_code, warehouse.warehouse)
-#                     qty += (_bin.actual_qty - _bin.reserved_qty)
-
-# 				# bugfix #1582: variant control from WooCommerce, not ERPNext
-# 				#if item.woocommerce_variant_id and int(item.woocommerce_variant_id) > 0:
-# 					#item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, item.woocommerce_variant_id, is_variant=True, actual_qty=qty)
-# 				#else:
-# 					#item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, item.woocommerce_variant_id, actual_qty=qty)
-#                 if item.woocommerce_product_id and item.variant_of:
-# 					# item = variant
-#                     template_item = frappe.get_doc("Item", item.variant_of).woocommerce_product_id
-#                     item_data, resource = get_product_update_dict_and_resource(template_item, woocommerce_variant_id=item.woocommerce_product_id, is_variant=True, actual_qty=qty)
-#                 else:
-# 					# item = single
-#                     item_data, resource = get_product_update_dict_and_resource(item.woocommerce_product_id, actual_qty=qty)
-#                 try:
-# 					#make_woocommerce_log(title="Update stock of {0}".format(item.barcode), status="Started", method="update_item_stock", message="Resource: {0}, data: {1}".format(resource, item_data))
-#                     put_request(resource, item_data)
-#                 except requests.exceptions.HTTPError as e:
-#                     if e.args[0] and e.args[0].startswith("404"):
-#                         make_woocommerce_log(title=e.message, status="Error", method="update_item_stock", message=frappe.get_traceback(),
-#                             request_data=item_data, exception=True)
-#                         disable_woocommerce_sync_for_item(item)
-#                     else:
-#                         raise e
 
 
 def update_item_stock(item_code, woocommerce_settings, bin=None, force=False):
